@@ -1,0 +1,15 @@
+fmod NS-WHILE-SYNTAX is
+  
+  pr QID .
+  pr A-SYNTAX .
+  pr B-SYNTAX .
+
+  sort Stat .
+
+  op _:=_ : Qid Exp -> Stat .
+  op skip : -> Stat [ctor] .
+  op _;_ : Stat Stat -> Stat [prec 100 assoc] .
+  op if_then_else_ : Cond Stat Stat -> Stat .
+  op while_do_ : Cond Stat -> Stat .
+
+endfm

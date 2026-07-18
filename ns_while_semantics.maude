@@ -1,0 +1,47 @@
+mod NS-WHILE-SEMANTICS is
+  
+  pr STATE .
+  pr NS-WHILE-SYNTAX .
+  pr A-SYNTAX .
+  pr A-SEMANTICS .
+  pr B-SYNTAX .
+  pr B-SEMANTICS .
+
+  sort Config .
+  subsort State < Config .
+
+  op <_,_> : Stat State -> Config .
+
+  vars S S' S'' : Stat .
+  vars M M' M'' : State .
+  vars Q : Qid .
+  vars E : Exp .
+  vars C : Cond .
+
+  rl [assign] :
+    < Q := E , M > => M [Q |-> A[E] M] .
+
+  rl [skip] : 
+    < skip , M > => M .
+
+  crl [comp] :
+    < (S ; S') , M > => M''
+      if < S , M > => M' /\ < S' , M' > => M'' .
+  
+  crl [if-tt] : 
+    < if C then S else S' , M > => M' 
+      if B[C] M = true /\ < S , M > => M' .
+
+  crl [if-ff] : 
+    < if C then S else S' , M > => M' 
+      if B[C] M = false /\ < S' , M > => M' .
+
+  crl [while-tt] : 
+    < while C do S , M > => M''
+      if B[C] M = true /\ < S , M > => M' /\ < while C do S , M' > => M'' .
+
+  crl [while-ff] : 
+    < while C do S , M > => M 
+      if B[C] M = false .
+
+endm

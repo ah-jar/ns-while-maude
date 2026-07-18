@@ -1,0 +1,20 @@
+fmod A-SEMANTICS is
+  pr QID .
+  pr INT .
+  pr STATE .
+  pr A-SYNTAX .
+
+  op A[_]_ : Exp State -> Int .
+
+  vars I : Int .
+  vars S : State .
+  vars Q : Qid .
+  vars E E' : Exp .
+
+  eq A[I] S = I .
+  eq A[Q] S = S Q .
+  eq A[E ++ E'] S = (A[E] S) + (A[E'] S) .
+  eq A[E ** E'] S = (A[E] S) * (A[E'] S) .
+  eq A[E -- E'] S = (A[E] S) - (A[E'] S) .
+
+endfm 
