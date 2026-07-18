@@ -1,4 +1,5 @@
 fmod A-SYNTAX is
+
   pr STATE .
   pr QID .
   pr INT .
@@ -6,8 +7,8 @@ fmod A-SYNTAX is
   sort Exp .
   subsorts Int Qid < Exp .
 
-  op _++_ : Exp Exp -> Exp [assoc comm prec 30] .
-  op _**_ : Exp Exp -> Exp [assoc comm prec 20] .
+  op _++_ : Exp Exp -> Exp [prec 30 assoc comm] .
+  op _**_ : Exp Exp -> Exp [prec 20 assoc comm] .
   op _--_ : Exp Exp -> Exp [prec 30] .
 
 endfm
