@@ -1,0 +1,84 @@
+mod NS-WHILE-PROOFS is
+
+  pr STATE .
+  pr WHILE-SYNTAX .
+  pr A-SYNTAX .
+  pr A-SEMANTICS .
+  pr B-SYNTAX .
+  pr B-SEMANTICS .
+
+  sort Tree Config Result .
+  subsort Config Tree < Result .
+
+  op <_,_> : Stat State -> Config .
+  ***op _->_ : Config State -> Tree .
+  op skipns : Stat State State -> Tree .
+  op assns : Stat State State -> Tree .
+  op compns : Stat State Tree Tree State -> Tree .
+  op ifttns : Stat State Tree State -> Tree .
+  op ifffns : Stat State Tree State -> Tree .
+  op whilettns : Stat State Tree Tree State -> Tree .
+  op whileffns : Stat State State -> Tree .
+  op finalState : Tree -> State .
+
+  vars M M' M'' : State .
+  vars Q : Qid .
+  vars E : Exp .
+  vars S S' : Stat .
+  vars T T' : Tree .
+  vars C : Cond .
+
+  eq finalState(assns(S, M, M')) = M' .
+  eq finalState(skipns(S, M, M')) = M' .
+  eq finalState(compns(S, M, T, T', M')) = M' .
+  eq finalState(ifttns(S, M, T, M')) = M' .
+  eq finalState(ifffns(S, M, T, M')) = M' .
+  eq finalState(whilettns(S, M, T, T', M')) = M' .
+  eq finalState(whileffns(S, M, M')) = M' .
+
+  rl [assign] :
+    < Q := E , M > => assns(Q := E, M, M [Q |-> A[E] M]) .
+
+  rl [skip] :
+    < skip , M > => skipns(skip, M, M) .
+
+  crl [comp] :
+    < (S ; S') , M > => compns((S ; S'), M, T, T', M'')
+        if
+            < S , M > => T
+            /\ M' := finalState(T)
+            /\ < S' , M' > => T'
+            /\ M'' := finalState(T') .
+
+  crl [if-tt] :
+    < if C then S else S' , M > =>
+    ifttns((if C then S else S'), M, T, M')
+        if
+            B[C] M = true
+            /\ < S , M > => T
+            /\ M' := finalState(T) .
+
+  crl [if-ff] :
+    < if C then S else S' , M > =>
+    ifffns((if C then S else S'), M, T, M')
+        if
+            B[C] M = false
+            /\ < S' , M > => T
+            /\ M' := finalState(T) .
+
+  crl [while-tt] :
+    < while C do S , M > =>
+    whilettns((while C do S), M, T, T', M'')
+        if
+            B[C] M = true
+            /\ < S , M > => T
+            /\ M' := finalState(T)
+            /\ < while C do S , M' > => T'
+            /\ M'' := finalState(T') .
+
+  crl [while-ff] :
+    < while C do S , M > =>
+    whileffns((while C do S), M, M)
+        if B[C] M = false .
+
+endm
