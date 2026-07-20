@@ -11,7 +11,7 @@ mod NS-WHILE-PROOFS is
   subsort Config Tree < Result .
 
   op <_,_> : Stat State -> Config .
-  ***op _->_ : Config State -> Tree .
+  
   op skipns : Stat State State -> Tree .
   op assns : Stat State State -> Tree .
   op compns : Stat State Tree Tree State -> Tree .
@@ -19,6 +19,9 @@ mod NS-WHILE-PROOFS is
   op ifffns : Stat State Tree State -> Tree .
   op whilettns : Stat State Tree Tree State -> Tree .
   op whileffns : Stat State State -> Tree .
+  op repeatffns : Stat State Tree Tree State -> Tree .
+  op repeatttns : Stat State Tree State -> Tree .
+
   op finalState : Tree -> State .
 
   vars M M' M'' : State .
@@ -35,6 +38,8 @@ mod NS-WHILE-PROOFS is
   eq finalState(ifffns(S, M, T, M')) = M' .
   eq finalState(whilettns(S, M, T, T', M')) = M' .
   eq finalState(whileffns(S, M, M')) = M' .
+  eq finalState(repeatffns(S, M, T, T', M')) = M' .
+  eq finalState(repeatttns(S, M, T, M')) = M' .
 
   rl [assign] :
     < Q := E , M > => assns(Q := E, M, M [Q |-> A[E] M]) .
@@ -80,5 +85,23 @@ mod NS-WHILE-PROOFS is
     < while C do S , M > =>
     whileffns((while C do S), M, M)
         if B[C] M = false .
+
+  crl [repeat-ff] :
+    < repeat S until C , M > => 
+    repeatffns((repeat S until C), M, T, T', M'')
+    if 
+      < S , M > => T
+      /\ M' := finalState(T)
+      /\ B[C] M' = false 
+      /\ < repeat S until C , M' > => T' 
+      /\ M'' := finalState(T') .
+
+  crl [repeat-tt] :
+    < repeat S until C , M > => 
+    repeatttns((repeat S until C), M, T, M')
+    if 
+      < S , M > => T
+      /\ M' := finalState(T)
+      /\ B[C] M' = true .
 
 endm

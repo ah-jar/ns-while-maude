@@ -46,4 +46,8 @@ mod SOS-WHILE-SEMANTICS is
         < while C do S , M > =>
         < if C then (S ; while C do S) else skip , M > .
 
+    rl [repeat] :
+      < repeat S until C , M > => 
+      < (S ; if C then skip else (repeat S until C)) , M > .
+
 endm

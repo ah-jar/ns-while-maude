@@ -44,4 +44,17 @@ mod NS-WHILE-SEMANTICS is
     < while C do S , M > => M
       if B[C] M = false .
 
+  crl [repeat-tt] : 
+    < repeat S until C , M > => M''
+    if 
+      < S , M > => M' 
+      /\ B [C] M' = false 
+      /\ < repeat S until C , M' > => M'' .
+
+  crl [repeat-ff] :
+     < repeat S until C , M > => M'
+     if 
+      < S , M > => M'
+      /\ B [C] M' = true .
+
 endm

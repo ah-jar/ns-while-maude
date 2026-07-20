@@ -19,6 +19,7 @@ mod SOS-WHILE-PROOFS is
   op ifttsos : Stat State Stat State -> Tree .
   op ifffsos : Stat State Stat State -> Tree .
   op whilesos : Stat State Stat State -> Tree .
+  op repeatsos : Stat State Stat State -> Tree .
 
   op finalState : Tree -> State .
   op finalStat : Tree -> Stat .
@@ -40,6 +41,7 @@ mod SOS-WHILE-PROOFS is
   eq finalStat(ifttsos(S, M, S', M')) = S' .
   eq finalStat(ifffsos(S, M, S', M')) = S' .
   eq finalStat(whilesos(S, M, S', M')) = S' .
+  eq finalStat(repeatsos(S, M, S', M')) = S' .
 
   eq finalState(asssos(S, M, M')) = M' .
   eq finalState(skipsos(S, M, M')) = M' .
@@ -48,6 +50,7 @@ mod SOS-WHILE-PROOFS is
   eq finalState(ifttsos(S, M, S', M')) = M' .
   eq finalState(ifffsos(S, M, S', M')) = M' .
   eq finalState(whilesos(S, M, S', M')) = M' .
+  eq finalState(repeatsos(S, M, S', M')) = M' .
 
   rl [assign] :
     < Q := E , M > => asssos(Q := E, M, M [Q |-> A[E] M]) .
@@ -83,6 +86,31 @@ mod SOS-WHILE-PROOFS is
   rl [while] :
     < while C do S , M > =>
     whilesos(while C do S, M,
-        if C then (S ; while C do S) else skip, M) .
+      if C then (S ; while C do S) else skip, M) .
+
+  rl [repeat] :
+    < repeat S until C , M > => 
+    repeatsos((repeat S until C), M, 
+      (S ; if C then skip else (repeat S until C)), M) .
+
+
+  *** CIERRE TRANSITIVO
+
+  op seqsos : Tree Tree -> Tree [assoc] .
+  op run : Config -> Tree .
+
+  crl [run-step] :
+    run(< S1 , M >) => seqsos(T, run(< S1' , M' >))
+    if 
+      < S1 , M > => T 
+      /\ isTerminal(T) = false 
+      /\ S1' := finalStat(T)
+      /\ M' := finalState(T) .
+
+  crl [run-end] :
+    run(< S1 , M >) => T 
+    if 
+      < S1 , M > => T 
+      /\ isTerminal(T) = true .
 
 endm
