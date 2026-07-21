@@ -21,6 +21,7 @@ mod SOS-WHILE-PROOFS is
   op whilesos : Stat State Stat State -> Tree .
   op repeatsos : Stat State Stat State -> Tree .
   op forsos : Stat State Stat State -> Tree .
+  op abortsos : Stat State -> Tree .
 
   op finalState : Tree -> State .
   op finalStat : Tree -> Stat .
@@ -55,6 +56,10 @@ mod SOS-WHILE-PROOFS is
   eq finalState(repeatsos(S, M, S', M')) = M' .
   eq finalState(forsos(S, M, S', M')) = M' .
 
+  op isAbort : Tree -> Bool .
+  eq isAbort(abortsos(S, M)) = true .
+  eq isAbort(T) = false [owise] .
+
   rl [assign] :
     < Q := E , M > => asssos(Q := E, M, M [Q |-> A[E] M]) .
 
@@ -66,6 +71,7 @@ mod SOS-WHILE-PROOFS is
     if
         < S1 , M > => T
         /\ isTerminal(T) = false
+        /\ isAbort(T) = false
         /\ M' := finalState(T)
         /\ S1' := finalStat(T) .
 
@@ -100,6 +106,9 @@ mod SOS-WHILE-PROOFS is
     < for Q := E to E' do S , M > => 
       forsos((for Q := E to E' do S), M, if E <=? E' then
       (Q := E ; S ; (for Q := Q ++ 1 to E' do S)) else skip, M) .
+
+  rl [abort] : 
+    < abort , M > => abortsos(abort, M) .
 
 
   *** CIERRE TRANSITIVO

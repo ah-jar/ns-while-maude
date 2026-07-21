@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Ejecuta Maude, convierte los términos de prueba en árboles LaTeX y crea un PDF.
-Soporta WHILE extendido (incluyendo repeat-until y for-to-do).
+Soporta WHILE extendido (incluyendo repeat-until, for-to-do y abort).
+Muestra árboles incompletos indicando bloqueos/abortos mediante not-arrow / stuck.
 Soporta Semántica Natural (NS), Semántica de Paso Corto (SOS) y modo Comparativa (--compare).
-Abrevia sentencias largas (S_i) y subárboles (T_i) SOLAMENTE cuando es estrictamente necesario.
-Asigna T_ini a la primera hoja (base), T_fin a la raíz (conclusión principal) y numera los intermedios Top-Down.
+Abrevia sentencias largas (S_i) y subárboles (T_i) cuando es necesario.
+Asigna T_ini / sigma_ini a la base inicial y T_fin / sigma_fin a la conclusión final.
 Limpia automáticamente los archivos auxiliares (.tex, .aux, .log)."""
 
 import re
@@ -24,6 +25,7 @@ class Node:
     children: tuple = ()
     next_stat: str = None  # Configuración intermedia < S', sigma' > en SOS
     semantics: str = "ns"  # 'ns' o 'sos'
+    is_stuck: bool = False # Indica si es un punto de bloqueo por abort
 
 
 def split_arguments(text: str) -> list[str]:
@@ -43,6 +45,12 @@ def split_arguments(text: str) -> list[str]:
 
 def parse_tree(term: str) -> Node:
     term = re.sub(r"\s+", " ", term).strip()
+    
+    # Manejo de términos no reducidos de SOS que quedaron atascados
+    match_run_stuck = re.fullmatch(r"run\(\s*<\s*(.*?)\s*,\s*(.*?)\s*>\s*\)", term)
+    if match_run_stuck:
+        return Node("abort", match_run_stuck.group(1), match_run_stuck.group(2), "stuck", semantics="sos", is_stuck=True)
+
     match = re.fullmatch(r"([A-Za-z0-9_-]+)\((.*)\)", term)
     if not match:
         raise ValueError(f"Término de árbol no reconocido:\n{term}")
@@ -54,6 +62,14 @@ def parse_tree(term: str) -> Node:
     if constructor == "seqsos" and len(args) >= 1:
         children = tuple(parse_tree(arg) for arg in args if arg != "nilSOS")
         return Node("seq", "", "", "", children, semantics="sos")
+
+    # --- CASOS DE ABORT / BLOQUEO ---
+    if constructor == "abortns" and len(args) == 2:
+        return Node("abort", args[0], args[1], "stuck", semantics="ns", is_stuck=True)
+    if constructor == "compabortns" and len(args) == 3:
+        return Node("comp-abort", args[0], args[1], "stuck", (parse_tree(args[2]),), semantics="ns", is_stuck=True)
+    if constructor == "abortsos" and len(args) == 2:
+        return Node("abort", args[0], args[1], "stuck", semantics="sos", is_stuck=True)
 
     # --- REGLAS DE SEMÁNTICA NATURAL (NS) ---
     if constructor == "assns" and len(args) == 3:
@@ -126,7 +142,7 @@ def statement_latex(text: str) -> str:
     for old, new in replacements:
         text = text.replace(old, new)
 
-    for word in ("skip", "if", "then", "else", "while", "do", "repeat", "until", "for", "to", "true", "false"):
+    for word in ("skip", "abort", "if", "then", "else", "while", "do", "repeat", "until", "for", "to", "true", "false"):
         text = re.sub(rf"\b{word}\b", rf"\\mathbf{{{word}}}", text)
 
     for i, variable in enumerate(variables):
@@ -138,23 +154,28 @@ def statement_latex(text: str) -> str:
 
 class Context:
     def __init__(self):
-        self.sigma_map = {}
-        self.sigma_values = {}
+        self.sigma_keys = {}       # norm_key -> sig_id (int)
+        self.sigma_raw_texts = {}  # sig_id -> clean_text
         self.statement_map = {}
         self.statement_values = {}
         self.subtrees = []
-        self.max_stat_length = 30 # <-- Ajustado para la letra más grande
+        self.max_stat_length = 30
         self.tree_counter = 0
 
     def get_sigma(self, text: str) -> str:
-        key = re.sub(r"[\s'\(\)]+", "", text)
-        if key not in self.sigma_map:
-            i = len(self.sigma_map) 
-            name = rf"\sigma_{{{i}}}"
-            self.sigma_map[key] = name
-            clean_text = re.sub(r"\s+", " ", text.strip())
-            self.sigma_values[name] = self.format_state_value(clean_text)
-        return self.sigma_map[key]
+        clean_text = re.sub(r"\s+", " ", text.strip())
+        if clean_text == "stuck":
+            return r"\mathbf{stuck}"
+
+        norm_key = re.sub(r"[\s'\(\)]+", "", clean_text)
+        
+        if norm_key not in self.sigma_keys:
+            sig_id = len(self.sigma_keys)
+            self.sigma_keys[norm_key] = sig_id
+            self.sigma_raw_texts[sig_id] = clean_text
+            
+        sig_id = self.sigma_keys[norm_key]
+        return f"@@SIG_{sig_id}@@"
         
     def get_statement(self, text: str) -> str:
         clean_text = re.sub(r"\s+", " ", text.strip())
@@ -188,13 +209,17 @@ class Context:
 def get_transition(node: Node, ctx: Context) -> str:
     stmt = ctx.get_statement(node.statement)
     left = rf"\left\langle {stmt},\; {ctx.get_sigma(node.before)}\right\rangle"
-    arrow = r"\longrightarrow" if node.semantics == "ns" else r"\Rightarrow"
     
-    if node.semantics == "sos" and node.next_stat:
-        next_stmt = ctx.get_statement(node.next_stat)
-        right = rf"\left\langle {next_stmt},\; {ctx.get_sigma(node.after)}\right\rangle"
+    if node.is_stuck:
+        arrow = r"\mathbin{\not\longrightarrow}" if node.semantics == "ns" else r"\mathbin{\not\Rightarrow}"
+        right = r"\mathbf{stuck}"
     else:
-        right = ctx.get_sigma(node.after)
+        arrow = r"\longrightarrow" if node.semantics == "ns" else r"\Rightarrow"
+        if node.semantics == "sos" and node.next_stat:
+            next_stmt = ctx.get_statement(node.next_stat)
+            right = rf"\left\langle {next_stmt},\; {ctx.get_sigma(node.after)}\right\rangle"
+        else:
+            right = ctx.get_sigma(node.after)
         
     return rf"{left} {arrow} {right}"
 
@@ -285,6 +310,22 @@ def run_maude(program_file: Path, main_file: Path, semantics_module: str) -> str
     return extract_result(output)
 
 
+def get_init_and_final_sigma_ids(tree: Node, ctx: Context) -> tuple[int | None, int | None]:
+    if tree.rule == "seq" and tree.children:
+        init_text = tree.children[0].before
+        final_text = tree.children[-1].after
+    else:
+        init_text = tree.before
+        final_text = tree.after
+
+    norm_init = re.sub(r"[\s'\(\)]+", "", re.sub(r"\s+", " ", init_text.strip()))
+    norm_final = re.sub(r"[\s'\(\)]+", "", re.sub(r"\s+", " ", final_text.strip()))
+
+    init_id = ctx.sigma_keys.get(norm_init)
+    final_id = ctx.sigma_keys.get(norm_final)
+    return init_id, final_id
+
+
 def build_semantics_section(tree: Node, title: str) -> str:
     ctx = Context()
     split_tree(tree, ctx)
@@ -292,37 +333,59 @@ def build_semantics_section(tree: Node, title: str) -> str:
     if not ctx.subtrees:
         return rf"\section*{{{title}}}"
 
+    # --- MAPEO DE ÁRBOLES (T_ini, T_1, ..., T_fin) ---
     root_id = ctx.subtrees[-1][0]
     first_leaf_id = ctx.subtrees[0][0]
     
-    display_map = {root_id: r"\mathit{fin}"}
+    tree_display_map = {root_id: r"\mathit{fin}"}
     if root_id != first_leaf_id:
-        display_map[first_leaf_id] = r"\mathit{ini}"
+        tree_display_map[first_leaf_id] = r"\mathit{ini}"
         
-    current_index = 1
+    current_tree_index = 1
     tex_by_id = {uid: tex for uid, tex in ctx.subtrees}
     
-    def assign_names(uid):
-        nonlocal current_index
+    def assign_tree_names(uid):
+        nonlocal current_tree_index
         tex = tex_by_id.get(uid, "")
         child_ids = re.findall(r"@@T_(\d+)@@", tex)
         for cid in child_ids:
-            if cid not in display_map:
-                display_map[cid] = str(current_index)
-                current_index += 1
-            assign_names(cid)
+            if cid not in tree_display_map:
+                tree_display_map[cid] = str(current_tree_index)
+                current_tree_index += 1
+            assign_tree_names(cid)
             
-    assign_names(root_id)
+    assign_tree_names(root_id)
 
+    # --- MAPEO DE ESTADOS (sigma_ini, sigma_1, ..., sigma_fin) ---
+    init_sig_id, final_sig_id = get_init_and_final_sigma_ids(tree, ctx)
+    sigma_display_map = {}
+
+    if init_sig_id is not None:
+        sigma_display_map[init_sig_id] = r"\sigma_{\mathit{ini}}"
+    if final_sig_id is not None and final_sig_id != init_sig_id:
+        sigma_display_map[final_sig_id] = r"\sigma_{\mathit{fin}}"
+
+    current_sig_index = 1
+    for sig_id in ctx.sigma_raw_texts:
+        if sig_id not in sigma_display_map:
+            sigma_display_map[sig_id] = rf"\sigma_{{{current_sig_index}}}"
+            current_sig_index += 1
+
+    # --- SUSTITUCIÓN DE PLACEHOLDERS EN DERIVACIONES ---
     derivations_tex_list = []
     for uid, tex in ctx.subtrees:
-        my_display = display_map.get(uid, uid)
+        my_display = tree_display_map.get(uid, uid)
         
-        def replace_placeholder(match):
+        def replace_tree_placeholder(match):
             cid = match.group(1)
-            return rf"\mathcal{{T}}_{{{display_map.get(cid, cid)}}}"
+            return rf"\mathcal{{T}}_{{{tree_display_map.get(cid, cid)}}}"
             
-        final_tex = re.sub(r"@@T_(\d+)@@", replace_placeholder, tex)
+        def replace_sigma_placeholder(match):
+            sig_id = int(match.group(1))
+            return sigma_display_map.get(sig_id, f"\\sigma_{{{sig_id}}}")
+            
+        final_tex = re.sub(r"@@T_(\d+)@@", replace_tree_placeholder, tex)
+        final_tex = re.sub(r"@@SIG_(\d+)@@", replace_sigma_placeholder, final_tex)
         derivations_tex_list.append(rf"\[ \mathcal{{T}}_{{{my_display}}} = {final_tex} \]")
         
     derivations_tex = "\n\\vspace{0.3cm}\n".join(derivations_tex_list)
@@ -338,8 +401,8 @@ def build_semantics_section(tree: Node, title: str) -> str:
         )
 
     states_tex = "\n".join(
-        rf"{name} &= {value} \\"
-        for name, value in ctx.sigma_values.items()
+        rf"{sigma_display_map[sig_id]} &= {ctx.format_state_value(clean_text)} \\"
+        for sig_id, clean_text in ctx.sigma_raw_texts.items()
     )
     if states_tex:
         states_tex = (
@@ -347,7 +410,6 @@ def build_semantics_section(tree: Node, title: str) -> str:
             rf"\begin{{align*}}" + "\n" + states_tex + "\n" + rf"\end{{align*}}"
         )
 
-    # Entorno \small eliminado de aquí para usar el tamaño de la clase del documento
     return rf"""\section*{{{title}}}
 
 {derivations_tex}
@@ -362,8 +424,8 @@ def generate_single_latex(tree: Node, semantics_name: str) -> str:
     title = "Semántica Natural (NS)" if semantics_name == "ns" else "Semántica Operacional Estructurada (SOS)"
     section_body = build_semantics_section(tree, title)
 
-    return rf"""\documentclass[12pt,a4paper]{{article}} % <-- Fuente cambiada a 12pt
-\usepackage[margin=1cm, landscape]{{geometry}} % <-- Márgenes reducidos a 1cm
+    return rf"""\documentclass[12pt,a4paper]{{article}}
+\usepackage[margin=1cm, landscape]{{geometry}}
 \usepackage{{amsmath}}
 \usepackage{{amssymb}}
 \usepackage{{graphicx}}
@@ -380,8 +442,8 @@ def generate_comparison_latex(tree_ns: Node, tree_sos: Node) -> str:
     section_ns = build_semantics_section(tree_ns, "1. Semántica Natural (NS - Big-Step)")
     section_sos = build_semantics_section(tree_sos, "2. Semántica Operacional Estructurada (SOS - Small-Step)")
 
-    return rf"""\documentclass[12pt,a4paper]{{article}} % <-- Fuente cambiada a 12pt
-\usepackage[margin=1cm, landscape]{{geometry}} % <-- Márgenes reducidos a 1cm
+    return rf"""\documentclass[12pt,a4paper]{{article}}
+\usepackage[margin=1cm, landscape]{{geometry}}
 \usepackage{{amsmath}}
 \usepackage{{amssymb}}
 \usepackage{{graphicx}}
@@ -472,7 +534,7 @@ def main() -> None:
         latex_code = generate_single_latex(tree, mode)
 
     compile_pdf_in_temp(latex_code, output_pdf)
-    print(f"¡Éxito! PDF generado: {output_pdf}")
+    print(f"¡Éxito! PDF generado con árbol (incompleto o completo): {output_pdf}")
 
 
 if __name__ == "__main__":

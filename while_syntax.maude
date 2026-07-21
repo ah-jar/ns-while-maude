@@ -7,11 +7,10 @@ fmod WHILE-SYNTAX is
   sort Stat Assign .
   subsort Assign < Stat .
 
-  op _:=_ : Qid Exp -> Assign .
+  op abort : -> Stat [ctor] .
   op skip : -> Stat [ctor] .
-
+  op _:=_ : Qid Exp -> Assign .
   op _;_ : Stat Stat -> Stat [prec 100 assoc] .
-
   op if_then_else_ : Cond Stat Stat -> Stat .
   op while_do_ : Cond Stat -> Stat .
   op repeat_until_ : Stat Cond -> Stat .

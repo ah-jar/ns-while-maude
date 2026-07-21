@@ -23,6 +23,7 @@ mod NS-WHILE-PROOFS is
   op repeatttns : Stat State Tree State -> Tree .
   op forttns : Stat State Tree Tree Tree State -> Tree .
   op forffns : Stat State State -> Tree .
+  op abortns : Stat State -> Tree .
 
   op finalState : Tree -> State .
 
@@ -125,5 +126,9 @@ mod NS-WHILE-PROOFS is
     forffns((for Q := E to E' do S), M, M)
     if 
       B[E <=? E'] M = false .
+
+  rl [abort] : 
+    < abort , M > => abortsos(abort, M) .
+
 
 endm
