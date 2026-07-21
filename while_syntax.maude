@@ -4,9 +4,10 @@ fmod WHILE-SYNTAX is
   pr A-SYNTAX .
   pr B-SYNTAX .
 
-  sort Stat .
+  sort Stat Assign .
+  subsort Assign < Stat .
 
-  op _:=_ : Qid Exp -> Stat .
+  op _:=_ : Qid Exp -> Assign .
   op skip : -> Stat [ctor] .
 
   op _;_ : Stat Stat -> Stat [prec 100 assoc] .
@@ -14,5 +15,6 @@ fmod WHILE-SYNTAX is
   op if_then_else_ : Cond Stat Stat -> Stat .
   op while_do_ : Cond Stat -> Stat .
   op repeat_until_ : Stat Cond -> Stat .
+  op for_to_do_ : Assign Exp Stat -> Stat .
 
 endfm

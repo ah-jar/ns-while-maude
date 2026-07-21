@@ -1,8 +1,7 @@
 < 
-  repeat 
-    'x := 'x ++ 1
-    until
-    'x =? 5
-    , 
-    ['x := 0] 
-  >
+  'z := 1 ; 
+  for 'x := 0 to 8 do 
+    'z := 'z ** 2 
+  ,
+  empty
+>

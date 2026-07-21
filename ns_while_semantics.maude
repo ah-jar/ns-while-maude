@@ -13,9 +13,9 @@ mod NS-WHILE-SEMANTICS is
   op <_,_> : Stat State -> Config .
 
   vars S S' S'' : Stat .
-  vars M M' M'' : State .
-  vars Q : Qid .
-  vars E : Exp .
+  vars M M' M'' M''' : State .
+  vars Q Q' : Qid .
+  vars E E' : Exp .
   vars C : Cond .
 
   rl [assign] :
@@ -56,5 +56,18 @@ mod NS-WHILE-SEMANTICS is
      if 
       < S , M > => M'
       /\ B [C] M' = true .
+
+  crl [for-tt] :
+    < for Q := E to E' do S , M > => M'''
+    if 
+      B[E <=? E'] M = true
+      /\ < Q := E , M > => M'
+      /\ < S , M' > => M''
+      /\ < for Q := Q ++ 1 to E' do S , M'' > => M''' .
+
+  crl [for-ff] :
+    < for Q := E to E' do S , M > => M 
+    if 
+      B[E <=? E'] M = false .
 
 endm

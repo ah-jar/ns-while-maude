@@ -15,7 +15,7 @@ mod SOS-WHILE-SEMANTICS is
     vars S S1 S1' S2 : Stat .
     vars M M' M'' : State .
     vars Q : Qid .
-    vars E : Exp .
+    vars E E' : Exp .
     vars C : Cond .
 
     rl [assign] :
@@ -49,5 +49,10 @@ mod SOS-WHILE-SEMANTICS is
     rl [repeat] :
       < repeat S until C , M > => 
       < (S ; if C then skip else (repeat S until C)) , M > .
+
+    rl [for] : 
+      < for Q := E to E' do S , M > =>
+      < if E <=? E' then (Q := E ; S ; 
+      for Q := Q ++ 1 to E' do S) else skip , M > .
 
 endm

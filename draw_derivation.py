@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Ejecuta Maude, convierte los términos de prueba en árboles LaTeX y crea un PDF.
-Soporta WHILE extendido (incluyendo repeat-until).
+Soporta WHILE extendido (incluyendo repeat-until y for-to-do).
 Soporta Semántica Natural (NS), Semántica de Paso Corto (SOS) y modo Comparativa (--compare).
-Abrevia sentencias largas con S_i y árboles con \mathcal{T}_i.
+Abrevia sentencias largas (S_i) y subárboles (T_i) SOLAMENTE cuando es estrictamente necesario.
+Asigna T_ini a la primera hoja (base), T_fin a la raíz (conclusión principal) y numera los intermedios Top-Down.
 Limpia automáticamente los archivos auxiliares (.tex, .aux, .log)."""
 
 import re
@@ -69,14 +70,15 @@ def parse_tree(term: str) -> Node:
         return Node("while-tt", args[0], args[1], args[4], (parse_tree(args[2]), parse_tree(args[3])), semantics="ns")
     if constructor == "whileffns" and len(args) == 3:
         return Node("while-ff", args[0], args[1], args[2], semantics="ns")
-    
-    # Reglas de Repeat en NS:
     if constructor == "repeatffns" and len(args) == 5:
-        # repeatffns(repeat S until C, M, T_S, T_RepeatRest, M'')
         return Node("repeat-ff", args[0], args[1], args[4], (parse_tree(args[2]), parse_tree(args[3])), semantics="ns")
     if constructor == "repeatttns" and len(args) == 4:
-        # repeatttns(repeat S until C, M, T_S, M')
         return Node("repeat-tt", args[0], args[1], args[3], (parse_tree(args[2]),), semantics="ns")
+    if constructor == "forttns" and len(args) == 6:
+        return Node("for-tt", args[0], args[1], args[5], 
+                    (parse_tree(args[2]), parse_tree(args[3]), parse_tree(args[4])), semantics="ns")
+    if constructor == "forffns" and len(args) == 3:
+        return Node("for-ff", args[0], args[1], args[2], semantics="ns")
 
     # --- REGLAS DE SEMÁNTICA DE PASO CORTO (SOS) ---
     if constructor == "asssos" and len(args) == 3:
@@ -94,8 +96,9 @@ def parse_tree(term: str) -> Node:
     if constructor == "whilesos" and len(args) == 4:
         return Node("while", args[0], args[1], args[3], next_stat=args[2], semantics="sos")
     if constructor == "repeatsos" and len(args) == 4:
-        # repeatsos(repeat S until C, M, S ; if C then skip else (repeat S until C), M)
         return Node("repeat", args[0], args[1], args[3], next_stat=args[2], semantics="sos")
+    if constructor == "forsos" and len(args) == 4:
+        return Node("for", args[0], args[1], args[3], next_stat=args[2], semantics="sos")
 
     raise ValueError(f"Constructor no soportado: {constructor}/{len(args)}")
 
@@ -123,7 +126,7 @@ def statement_latex(text: str) -> str:
     for old, new in replacements:
         text = text.replace(old, new)
 
-    for word in ("skip", "if", "then", "else", "while", "do", "repeat", "until", "true", "false"):
+    for word in ("skip", "if", "then", "else", "while", "do", "repeat", "until", "for", "to", "true", "false"):
         text = re.sub(rf"\b{word}\b", rf"\\mathbf{{{word}}}", text)
 
     for i, variable in enumerate(variables):
@@ -134,14 +137,14 @@ def statement_latex(text: str) -> str:
 
 
 class Context:
-    """Maneja el registro de estados, sentencias largas y subárboles durante el recorrido."""
     def __init__(self):
         self.sigma_map = {}
         self.sigma_values = {}
         self.statement_map = {}
         self.statement_values = {}
         self.subtrees = []
-        self.max_stat_length = 40
+        self.max_stat_length = 30 # <-- Ajustado para la letra más grande
+        self.tree_counter = 0
 
     def get_sigma(self, text: str) -> str:
         key = re.sub(r"[\s'\(\)]+", "", text)
@@ -155,8 +158,9 @@ class Context:
         
     def get_statement(self, text: str) -> str:
         clean_text = re.sub(r"\s+", " ", text.strip())
+        length_check_text = clean_text.replace("'", "")
         
-        if len(clean_text) > self.max_stat_length:
+        if len(length_check_text) > self.max_stat_length:
             if clean_text not in self.statement_map:
                 i = len(self.statement_map) + 1
                 name = rf"S_{{{i}}}"
@@ -210,21 +214,29 @@ def format_rule(node: Node, child_derivs: list[str], ctx: Context) -> str:
     return rf"\frac{{{premises}}}{{{judgement}}}{label}"
 
 
-def split_tree(node: Node, ctx: Context) -> int:
+def split_tree(node: Node, ctx: Context) -> str:
     if node.rule == "seq":
         for child in node.children:
             split_tree(child, ctx)
-        return 0
+        return ""
 
     child_derivs = []
-    for child in node.children:
-        if not child.children:
-            child_derivs.append(format_axiom(child, ctx))
-        else:
-            child_id = split_tree(child, ctx)
-            child_derivs.append(rf"\mathcal{{T}}_{{{child_id}}}")
 
-    my_id = len(ctx.subtrees) + 1
+    for child in node.children:
+        if child.children:
+            child_id = split_tree(child, ctx)
+            child_derivs.append(f"@@T_{child_id}@@")
+        else:
+            child_axiom = format_axiom(child, ctx)
+            if len(child_axiom) > 160:  
+                child_id = split_tree(child, ctx)
+                child_derivs.append(f"@@T_{child_id}@@")
+            else:
+                child_derivs.append(child_axiom)
+
+    my_id = str(ctx.tree_counter)
+    ctx.tree_counter += 1
+    
     if not node.children:
         ctx.subtrees.append((my_id, format_axiom(node, ctx)))
     else:
@@ -277,10 +289,43 @@ def build_semantics_section(tree: Node, title: str) -> str:
     ctx = Context()
     split_tree(tree, ctx)
 
-    derivations_tex = "\n\\vspace{0.2cm}\n".join(
-        rf"\[ \mathcal{{T}}_{{{my_id}}} = {tex} \]"
-        for my_id, tex in ctx.subtrees
-    )
+    if not ctx.subtrees:
+        return rf"\section*{{{title}}}"
+
+    root_id = ctx.subtrees[-1][0]
+    first_leaf_id = ctx.subtrees[0][0]
+    
+    display_map = {root_id: r"\mathit{fin}"}
+    if root_id != first_leaf_id:
+        display_map[first_leaf_id] = r"\mathit{ini}"
+        
+    current_index = 1
+    tex_by_id = {uid: tex for uid, tex in ctx.subtrees}
+    
+    def assign_names(uid):
+        nonlocal current_index
+        tex = tex_by_id.get(uid, "")
+        child_ids = re.findall(r"@@T_(\d+)@@", tex)
+        for cid in child_ids:
+            if cid not in display_map:
+                display_map[cid] = str(current_index)
+                current_index += 1
+            assign_names(cid)
+            
+    assign_names(root_id)
+
+    derivations_tex_list = []
+    for uid, tex in ctx.subtrees:
+        my_display = display_map.get(uid, uid)
+        
+        def replace_placeholder(match):
+            cid = match.group(1)
+            return rf"\mathcal{{T}}_{{{display_map.get(cid, cid)}}}"
+            
+        final_tex = re.sub(r"@@T_(\d+)@@", replace_placeholder, tex)
+        derivations_tex_list.append(rf"\[ \mathcal{{T}}_{{{my_display}}} = {final_tex} \]")
+        
+    derivations_tex = "\n\\vspace{0.3cm}\n".join(derivations_tex_list)
     
     statements_tex = "\n".join(
         rf"{name} &= {value} \\"
@@ -302,10 +347,10 @@ def build_semantics_section(tree: Node, title: str) -> str:
             rf"\begin{{align*}}" + "\n" + states_tex + "\n" + rf"\end{{align*}}"
         )
 
+    # Entorno \small eliminado de aquí para usar el tamaño de la clase del documento
     return rf"""\section*{{{title}}}
-{{\small
+
 {derivations_tex}
-}}
 
 {statements_tex}
 
@@ -317,8 +362,8 @@ def generate_single_latex(tree: Node, semantics_name: str) -> str:
     title = "Semántica Natural (NS)" if semantics_name == "ns" else "Semántica Operacional Estructurada (SOS)"
     section_body = build_semantics_section(tree, title)
 
-    return rf"""\documentclass[a4paper]{{article}}
-\usepackage[margin=1.5cm]{{geometry}}
+    return rf"""\documentclass[12pt,a4paper]{{article}} % <-- Fuente cambiada a 12pt
+\usepackage[margin=1cm, landscape]{{geometry}} % <-- Márgenes reducidos a 1cm
 \usepackage{{amsmath}}
 \usepackage{{amssymb}}
 \usepackage{{graphicx}}
@@ -335,8 +380,8 @@ def generate_comparison_latex(tree_ns: Node, tree_sos: Node) -> str:
     section_ns = build_semantics_section(tree_ns, "1. Semántica Natural (NS - Big-Step)")
     section_sos = build_semantics_section(tree_sos, "2. Semántica Operacional Estructurada (SOS - Small-Step)")
 
-    return rf"""\documentclass[a4paper]{{article}}
-\usepackage[margin=1.5cm]{{geometry}}
+    return rf"""\documentclass[12pt,a4paper]{{article}} % <-- Fuente cambiada a 12pt
+\usepackage[margin=1cm, landscape]{{geometry}} % <-- Márgenes reducidos a 1cm
 \usepackage{{amsmath}}
 \usepackage{{amssymb}}
 \usepackage{{graphicx}}

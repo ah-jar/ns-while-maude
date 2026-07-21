@@ -21,14 +21,16 @@ mod NS-WHILE-PROOFS is
   op whileffns : Stat State State -> Tree .
   op repeatffns : Stat State Tree Tree State -> Tree .
   op repeatttns : Stat State Tree State -> Tree .
+  op forttns : Stat State Tree Tree Tree State -> Tree .
+  op forffns : Stat State State -> Tree .
 
   op finalState : Tree -> State .
 
-  vars M M' M'' : State .
+  vars M M' M'' M''' : State .
   vars Q : Qid .
-  vars E : Exp .
+  vars E E' : Exp .
   vars S S' : Stat .
-  vars T T' : Tree .
+  vars T T' T'' : Tree .
   vars C : Cond .
 
   eq finalState(assns(S, M, M')) = M' .
@@ -40,6 +42,8 @@ mod NS-WHILE-PROOFS is
   eq finalState(whileffns(S, M, M')) = M' .
   eq finalState(repeatffns(S, M, T, T', M')) = M' .
   eq finalState(repeatttns(S, M, T, M')) = M' .
+  eq finalState(forttns(S, M, T, T', T'', M')) = M' .
+  eq finalState(forffns(S, M, M')) = M' .
 
   rl [assign] :
     < Q := E , M > => assns(Q := E, M, M [Q |-> A[E] M]) .
@@ -103,5 +107,23 @@ mod NS-WHILE-PROOFS is
       < S , M > => T
       /\ M' := finalState(T)
       /\ B[C] M' = true .
+
+  crl [for-tt] :
+    < for Q := E to E' do S , M > =>
+    forttns((for Q := E to E' do S), M, T, T', T'', M''')
+    if 
+      B[E <=? E'] M = true
+      /\ < Q := E , M > => T 
+      /\ M' := finalState(T)
+      /\ < S , M' > => T'
+      /\ M'' := finalState(T')
+      /\ < for Q := Q ++ 1 to E' do S , M'' > => T''
+      /\ M''' := finalState(T'') .
+
+  crl [for-ff] :
+    < for Q := E to E' do S , M > => 
+    forffns((for Q := E to E' do S), M, M)
+    if 
+      B[E <=? E'] M = false .
 
 endm
