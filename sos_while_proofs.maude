@@ -7,10 +7,11 @@ mod SOS-WHILE-PROOFS is
   pr B-SYNTAX .
   pr B-SEMANTICS .
 
-  sort Tree Config Result .
+  sort Tree Config Result Bottom .
   subsort Config Tree < Result .
 
   op <_,_> : Stat State -> Config .
+  op Bottom : -> State [ctor] .
 
   op skipsos : Stat State State -> Tree .
   op asssos : Stat State State -> Tree .
@@ -21,7 +22,9 @@ mod SOS-WHILE-PROOFS is
   op whilesos : Stat State Stat State -> Tree .
   op repeatsos : Stat State Stat State -> Tree .
   op forsos : Stat State Stat State -> Tree .
-  op abortsos : Stat State -> Tree .
+  op abortsos : Stat State State -> Tree .
+  op compabortsos : Stat State Tree State -> Tree .
+  op assertsos : Stat State Stat State -> Tree .
 
   op finalState : Tree -> State .
   op finalStat : Tree -> Stat .
@@ -36,6 +39,8 @@ mod SOS-WHILE-PROOFS is
 
   eq isTerminal(asssos(S, M, M')) = true .
   eq isTerminal(skipsos(S, M, M')) = true .
+  eq isTerminal(abortsos(S, M, M')) = true .
+  eq isTerminal(compabortsos(S, M, T, M')) = true .
   eq isTerminal(T) = false [owise] .
 
   eq finalStat(comp1sos(S, M, T, S', M')) = S' .
@@ -45,6 +50,7 @@ mod SOS-WHILE-PROOFS is
   eq finalStat(whilesos(S, M, S', M')) = S' .
   eq finalStat(repeatsos(S, M, S', M')) = S' .
   eq finalStat(forsos(S, M, S', M')) = S' .
+  eq finalStat(assertsos(S, M, S', M')) = S' .
 
   eq finalState(asssos(S, M, M')) = M' .
   eq finalState(skipsos(S, M, M')) = M' .
@@ -55,9 +61,13 @@ mod SOS-WHILE-PROOFS is
   eq finalState(whilesos(S, M, S', M')) = M' .
   eq finalState(repeatsos(S, M, S', M')) = M' .
   eq finalState(forsos(S, M, S', M')) = M' .
+  eq finalState(abortsos(S, M, M')) = M' .
+  eq finalState(compabortsos(S, M, T, M')) = M' .
+  eq finalState(assertsos(S, M, S', M')) = M' .
 
   op isAbort : Tree -> Bool .
-  eq isAbort(abortsos(S, M)) = true .
+  eq isAbort(abortsos(S, M, M')) = true .
+  eq isAbort(compabortsos(S, M, T, M')) = true .
   eq isAbort(T) = false [owise] .
 
   rl [assign] :
@@ -80,7 +90,14 @@ mod SOS-WHILE-PROOFS is
     if
         < S1 , M > => T
         /\ isTerminal(T) = true
+        /\ isAbort(T) = false
         /\ M' := finalState(T) .
+
+  crl [comp-abort] :
+    < (S1 ; S2) , M > => compabortsos((S1 ; S2), M, T, Bottom)
+    if
+        < S1 , M > => T
+        /\ isAbort(T) = true .
 
   crl [iftt] :
     < if C then S1 else S2 , M > =>
@@ -98,17 +115,22 @@ mod SOS-WHILE-PROOFS is
       if C then (S ; while C do S) else skip, M) .
 
   rl [repeat] :
-    < repeat S until C , M > => 
-    repeatsos((repeat S until C), M, 
+    < repeat S until C , M > =>
+    repeatsos((repeat S until C), M,
       (S ; if C then skip else (repeat S until C)), M) .
 
   rl [for] :
-    < for Q := E to E' do S , M > => 
+    < for Q := E to E' do S , M > =>
       forsos((for Q := E to E' do S), M, if E <=? E' then
       (Q := E ; S ; (for Q := Q ++ 1 to E' do S)) else skip, M) .
 
-  rl [abort] : 
-    < abort , M > => abortsos(abort, M) .
+  rl [abort] :
+    < abort , M > => abortsos(abort, M, Bottom) .
+
+  rl [assert] :
+    < assert C before S , M > =>
+    assertsos(assert C before S, M,
+    if C then S else abort , M) .
 
 
   *** CIERRE TRANSITIVO
@@ -118,16 +140,17 @@ mod SOS-WHILE-PROOFS is
 
   crl [run-step] :
     run(< S1 , M >) => seqsos(T, run(< S1' , M' >))
-    if 
-      < S1 , M > => T 
-      /\ isTerminal(T) = false 
+    if
+      < S1 , M > => T
+      /\ isTerminal(T) = false
       /\ S1' := finalStat(T)
       /\ M' := finalState(T) .
 
   crl [run-end] :
-    run(< S1 , M >) => T 
-    if 
-      < S1 , M > => T 
+    run(< S1 , M >) => T
+    if
+      M =/= Bottom
+      /\ < S1 , M > => T
       /\ isTerminal(T) = true .
 
 endm

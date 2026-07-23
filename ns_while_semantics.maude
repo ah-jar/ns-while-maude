@@ -11,6 +11,7 @@ mod NS-WHILE-SEMANTICS is
   subsort State < Config .
 
   op <_,_> : Stat State -> Config .
+  op Bottom : -> State [ctor] .
 
   vars S S' S'' : Stat .
   vars M M' M'' M''' : State .
@@ -26,48 +27,93 @@ mod NS-WHILE-SEMANTICS is
 
   crl [comp] :
     < (S ; S') , M > => M''
-      if < S , M > => M' /\ < S' , M' > => M'' .
+      if < S , M > => M'
+      /\ M' =/= Bottom
+      /\ < S' , M' > => M'' .
+
+  crl [comp-abort] :
+    < (S ; S') , M > => Bottom
+      if < S , M > => Bottom .
 
   crl [if-tt] :
     < if C then S else S' , M > => M'
-      if B[C] M = true /\ < S , M > => M' .
+      if B[C] M = true
+      /\ < S , M > => M' .
 
   crl [if-ff] :
     < if C then S else S' , M > => M'
-      if B[C] M = false /\ < S' , M > => M' .
+      if B[C] M = false
+      /\ < S' , M > => M' .
 
   crl [while-tt] :
     < while C do S , M > => M''
-      if B[C] M = true /\ < S , M > => M' /\ < while C do S , M' > => M'' .
+      if B[C] M = true
+      /\ < S , M > => M'
+      /\ M' =/= Bottom
+      /\ < while C do S , M' > => M'' .
 
   crl [while-ff] :
     < while C do S , M > => M
       if B[C] M = false .
 
-  crl [repeat-tt] : 
+  crl [while-abort] :
+    < while C do S , M > => Bottom
+    if
+        B[C] M = true
+        /\ < S , M > => Bottom .
+
+  crl [repeat-tt] :
     < repeat S until C , M > => M''
-    if 
-      < S , M > => M' 
-      /\ B [C] M' = false 
+    if
+      < S , M > => M'
+      /\ M' =/= Bottom
+      /\ B [C] M' = false
       /\ < repeat S until C , M' > => M'' .
 
   crl [repeat-ff] :
      < repeat S until C , M > => M'
-     if 
+     if
       < S , M > => M'
+      /\ M' =/= Bottom
       /\ B [C] M' = true .
+
+  crl [repeat-abort] :
+     < repeat S until C , M > => Bottom
+     if < S , M > => Bottom .
 
   crl [for-tt] :
     < for Q := E to E' do S , M > => M'''
-    if 
+    if
       B[E <=? E'] M = true
       /\ < Q := E , M > => M'
+      /\ M' =/= Bottom
       /\ < S , M' > => M''
+      /\ M'' =/= Bottom
       /\ < for Q := Q ++ 1 to E' do S , M'' > => M''' .
 
   crl [for-ff] :
-    < for Q := E to E' do S , M > => M 
-    if 
+    < for Q := E to E' do S , M > => M
+    if
       B[E <=? E'] M = false .
+
+  crl [for-abort] :
+    < for Q := E to E' do S , M > => Bottom
+    if
+      B[E <=? E'] M = true
+      /\ < Q := E , M > => M'
+      /\ < S , M' > => Bottom .
+
+  rl [abort] :
+    < abort , M > => Bottom .
+
+  crl [assert-tt] :
+    < assert C before S , M > => M'
+    if
+        B[C] M = true
+        /\ < S , M > => M' .
+
+  crl [assert-ff] :
+    < assert C before S , M > => Bottom
+    if B[C] M = false .
 
 endm

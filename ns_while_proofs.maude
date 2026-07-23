@@ -11,7 +11,8 @@ mod NS-WHILE-PROOFS is
   subsort Config Tree < Result .
 
   op <_,_> : Stat State -> Config .
-  
+  op Bottom : -> State [ctor] .
+
   op skipns : Stat State State -> Tree .
   op assns : Stat State State -> Tree .
   op compns : Stat State Tree Tree State -> Tree .
@@ -23,7 +24,13 @@ mod NS-WHILE-PROOFS is
   op repeatttns : Stat State Tree State -> Tree .
   op forttns : Stat State Tree Tree Tree State -> Tree .
   op forffns : Stat State State -> Tree .
-  op abortns : Stat State -> Tree .
+  op abortns : Stat State State -> Tree .
+  op compabortns : Stat State Tree State -> Tree .
+  op whileabortns : Stat State Tree State -> Tree .
+  op repeatabortns : Stat State Tree State -> Tree .
+  op forabortns : Stat State Tree Tree State -> Tree .
+  op assertttns : Stat State Tree State -> Tree .
+  op assertffns : Stat State State -> Tree .
 
   op finalState : Tree -> State .
 
@@ -45,6 +52,13 @@ mod NS-WHILE-PROOFS is
   eq finalState(repeatttns(S, M, T, M')) = M' .
   eq finalState(forttns(S, M, T, T', T'', M')) = M' .
   eq finalState(forffns(S, M, M')) = M' .
+  eq finalState(abortns(S, M, M')) = M' .
+  eq finalState(compabortns(S, M, T, M')) = M' .
+  eq finalState(whileabortns(S, M, T, M')) = M' .
+  eq finalState(repeatabortns(S, M, T, M')) = M' .
+  eq finalState(forabortns(S, M, T, T', M')) = M' .
+  eq finalState(assertttns(S, M, T, M')) = M' .
+  eq finalState(assertffns(S, M, M')) = M' .
 
   rl [assign] :
     < Q := E , M > => assns(Q := E, M, M [Q |-> A[E] M]) .
@@ -57,8 +71,16 @@ mod NS-WHILE-PROOFS is
         if
             < S , M > => T
             /\ M' := finalState(T)
+            /\ M' =/= Bottom
             /\ < S' , M' > => T'
             /\ M'' := finalState(T') .
+
+  crl [comp-abort] :
+     < (S ; S') , M > => compabortns((S ; S'), M, T, M')
+        if
+            < S , M > => T
+            /\ M' := finalState(T)
+            /\ M' = Bottom .
 
   crl [if-tt] :
     < if C then S else S' , M > =>
@@ -83,8 +105,18 @@ mod NS-WHILE-PROOFS is
             B[C] M = true
             /\ < S , M > => T
             /\ M' := finalState(T)
+            /\ M' =/= Bottom
             /\ < while C do S , M' > => T'
             /\ M'' := finalState(T') .
+
+  crl [while-abort] :
+    < while C do S , M > =>
+    whileabortns((while C do S), M, T, M')
+        if
+            B[C] M = true
+            /\ < S , M > => T
+            /\ M' := finalState(T)
+            /\ M' = Bottom .
 
   crl [while-ff] :
     < while C do S , M > =>
@@ -92,43 +124,78 @@ mod NS-WHILE-PROOFS is
         if B[C] M = false .
 
   crl [repeat-ff] :
-    < repeat S until C , M > => 
+    < repeat S until C , M > =>
     repeatffns((repeat S until C), M, T, T', M'')
-    if 
+    if
       < S , M > => T
       /\ M' := finalState(T)
-      /\ B[C] M' = false 
-      /\ < repeat S until C , M' > => T' 
+      /\ M' =/= Bottom
+      /\ B[C] M' = false
+      /\ < repeat S until C , M' > => T'
       /\ M'' := finalState(T') .
 
   crl [repeat-tt] :
-    < repeat S until C , M > => 
+    < repeat S until C , M > =>
     repeatttns((repeat S until C), M, T, M')
-    if 
+    if
       < S , M > => T
       /\ M' := finalState(T)
+      /\ M' =/= Bottom
       /\ B[C] M' = true .
+
+  crl [repeat-abort] :
+    < repeat S until C , M > =>
+    repeatabortns((repeat S until C), M, T, M')
+    if
+      < S , M > => T
+      /\ M' := finalState(T)
+      /\ M' = Bottom .
 
   crl [for-tt] :
     < for Q := E to E' do S , M > =>
     forttns((for Q := E to E' do S), M, T, T', T'', M''')
-    if 
+    if
       B[E <=? E'] M = true
-      /\ < Q := E , M > => T 
+      /\ < Q := E , M > => T
       /\ M' := finalState(T)
+      /\ M' =/= Bottom
       /\ < S , M' > => T'
       /\ M'' := finalState(T')
+      /\ M'' =/= Bottom
       /\ < for Q := Q ++ 1 to E' do S , M'' > => T''
       /\ M''' := finalState(T'') .
 
   crl [for-ff] :
-    < for Q := E to E' do S , M > => 
+    < for Q := E to E' do S , M > =>
     forffns((for Q := E to E' do S), M, M)
-    if 
+    if
       B[E <=? E'] M = false .
 
-  rl [abort] : 
-    < abort , M > => abortsos(abort, M) .
+  crl [for-abort] :
+    < for Q := E to E' do S , M > =>
+    forabortns((for Q := E to E' do S), M, T, T', M'')
+    if
+      B[E <=? E'] M = true
+      /\ < Q := E , M > => T
+      /\ M' := finalState(T)
+      /\ < S , M' > => T'
+      /\ M'' := finalState(T')
+      /\ M'' = Bottom .
 
+  rl [abort] :
+    < abort , M > => abortns(abort, M, Bottom) .
+
+  crl [assert-tt] :
+    < assert C before S , M > =>
+    assertttns(assert C before S, M, T, M')
+    if
+        B[C] M = true
+        /\ < S , M > => T
+        /\ M' := finalState(T) .
+
+  crl [assert-ff] :
+    < assert C before S , M > =>
+    assertffns(assert C before S, M, Bottom)
+    if B[C] M = false .
 
 endm
